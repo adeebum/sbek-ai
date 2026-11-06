@@ -230,7 +230,7 @@ body.noselect input,body.noselect textarea{-webkit-user-select:text;user-select:
         <option value="claude-haiku-5-5">Claude Haiku 5.5 (الأسرع والأرخص)</option>
       </select>
     </label>
-    <label>الصوت العربي
+    <label>صوت الفريق (بالإنجليزية)
       <select id="voice"></select>
     </label>
     <label>سرعة الكلام
@@ -239,7 +239,7 @@ body.noselect input,body.noselect textarea{-webkit-user-select:text;user-select:
     <label>المظهر
       <select id="theme"><option value="">حسب الجهاز</option><option value="light">فاتح</option><option value="dark">داكن</option></select>
     </label>
-    <div class="note">المفتاح يُحفظ في هذا المتصفح فقط ويُرسل مباشرة إلى Anthropic. للصوت السعودي الأفضل افتح الصفحة في متصفح Edge واختر صوت "Hamed" أو "Zariyah" (Saudi Arabia). المحادثات مكتوبة بالعربية الفصحى.</div>
+    <div class="note">المفتاح يُحفظ في هذا المتصفح فقط ويُرسل مباشرة إلى Anthropic. الفريق يتحدث حالياً بالإنجليزية، والكتابة كلها بالعربية الفصحى. أفضل الأصوات في متصفح Edge، ويوزَّع صوت رجالي ونسائي على الأعضاء تلقائياً.</div>
   </div>
   <div class="mfoot"><button class="pbtn" id="saveSet">حفظ</button><button class="hbtn" id="closeSet">إلغاء</button></div>
 </dialog>
@@ -390,7 +390,7 @@ function welcome(){
     <div class="chips">${chips}</div></div>`;
   $("#chat").querySelectorAll(".chip").forEach(c=>c.onclick=()=>send(c.dataset.q,false));
 }
-function addMsg(kind, text, agentId){
+function addMsg(kind, text, agentId, en){
   const w = $("#chat .welcome"); if(w) w.remove();
   const el = document.createElement("div");
   el.className = "msg "+kind;
@@ -398,7 +398,7 @@ function addMsg(kind, text, agentId){
   const {text:t, svg} = splitSvg(text);
   el.innerHTML = `<div class="who">${kind==="owner"?"أنت":`<img class="mini" src="${AV_URL[m.id]}" alt=""> ${m.name} · ${m.role}`}</div><div>${esc(t)}</div>${svg?svgImg(svg):""}
     <div class="tools"><button class="say">🔊 استمع</button></div>`;
-  el.querySelector(".say").onclick=()=>speakQueue([{text:t, id:agentId||"owner"}]);
+  el.querySelector(".say").onclick=()=>speakQueue([{text:t, en, id:agentId||"owner"}]);
   $("#chat").appendChild(el); $("#chat").scrollTop = 1e9;
   return el;
 }
@@ -410,35 +410,49 @@ function roomSep(text){
   const e=$("#room .empty"); if(e) e.remove();
   const d=document.createElement("div"); d.className="sep"; d.textContent=text; $("#room").appendChild(d);
 }
-function roomMsg(id, text){
+function roomMsg(id, text, en){
   const e=$("#room .empty"); if(e) e.remove();
   const m=T[id]; const {text:t, svg}=splitSvg(text);
   const d=document.createElement("div"); d.className="rmsg";
   d.innerHTML=`${avHTML(m)}<div class="bub"><b>${m.name} · ${m.role}</b>${esc(t)}${svg?svgImg(svg):""}</div>`;
   $("#room").appendChild(d); $("#room").scrollTop=1e9;
-  const item={id,text:t,el:d}; state.room.push(item);
+  const item={id,text:t,en:en||"",el:d}; state.room.push(item);
   if($("#roomVoice").checked) speakQueue([item],true);
   return item;
 }
 
 /* ================= الصوت ================= */
-let voices=[];
+let voices=[], enVoices=[];
+const SPEAK_EN = CONFIG.speakLang!=="ar";
+const MALE_RE=/Guy|Davis|Andrew|Brian|Christopher|Eric|Roger|Steffan|Ryan|Thomas|Daniel|Alex|Fred|Aaron|David|Mark|George|James|Liam|William|Tony|Jason|Male/i;
+const FEMALE_RE=/Aria|Jenny|Ava|Emma|Michelle|Ana|Libby|Sonia|Samantha|Karen|Moira|Tessa|Zira|Susan|Hazel|Victoria|Allison|Natasha|Clara|Female|Google US English|Google UK English Female/i;
 function loadVoices(){
-  voices = speechSynthesis.getVoices().filter(v=>/^ar/i.test(v.lang));
-  const saved = store.get("voice","");
+  const all = speechSynthesis.getVoices();
+  voices = all.filter(v=>/^ar/i.test(v.lang));
+  enVoices = all.filter(v=>/^en/i.test(v.lang)).sort((a,b)=>(/Online|Natural/i.test(b.name)-/Online|Natural/i.test(a.name))||(/en-US/i.test(b.lang)-/en-US/i.test(a.lang)));
+  const list = SPEAK_EN?enVoices:voices;
+  const saved = store.get(SPEAK_EN?"voiceEn":"voice","");
   const sel=$("#voice");
-  sel.innerHTML = voices.length? voices.map(v=>`<option value="${esc(v.name)}">${esc(v.name)} (${v.lang})</option>`).join("") : `<option value="">لا يوجد صوت عربي في هذا المتصفح</option>`;
-  const pick = voices.find(v=>v.name===saved) || voices.find(v=>/Hamed|Zariyah/i.test(v.name)) || voices.find(v=>/ar-SA/i.test(v.lang)) || voices[0];
+  sel.innerHTML = list.length? list.map(v=>`<option value="${esc(v.name)}">${esc(v.name)} (${v.lang})</option>`).join("") : `<option value="">لا يوجد صوت مناسب في هذا المتصفح</option>`;
+  const pick = list.find(v=>v.name===saved) || (SPEAK_EN? list.find(v=>FEMALE_RE.test(v.name)) : list.find(v=>/Hamed|Zariyah/i.test(v.name))) || list[0];
   if(pick) sel.value=pick.name;
 }
 if("speechSynthesis" in window){ loadVoices(); speechSynthesis.onvoiceschanged=loadVoices; }
-function voiceFor(id){
+function voiceFor(id, english){
   const m=T[id]; const g=m?m.g:"m";
-  const base = voices.find(v=>v.name===$("#voice").value);
-  // إذا فيه صوت سعودي رجالي ونسائي نوزعهم حسب العضو
+  if(english){
+    const chosen = enVoices.find(v=>v.name===$("#voice").value);
+    const male = enVoices.find(v=>MALE_RE.test(v.name)&&!FEMALE_RE.test(v.name));
+    const female = enVoices.find(v=>FEMALE_RE.test(v.name));
+    if(male&&female){
+      if(chosen && (g==="f")===FEMALE_RE.test(chosen.name)) return chosen;
+      return g==="f"?female:male;
+    }
+    return chosen||enVoices[0]||null;
+  }
   const male = voices.find(v=>/Hamed/i.test(v.name)); const female = voices.find(v=>/Zariyah/i.test(v.name));
   if(male&&female) return g==="f"?female:male;
-  return base||voices[0];
+  return voices[0]||null;
 }
 let speakList=[], speaking=false;
 function speakQueue(items, append){
@@ -450,8 +464,9 @@ function nextSpeak(){
   document.querySelectorAll(".rmsg.speaking").forEach(e=>e.classList.remove("speaking"));
   const it=speakList.shift(); if(!it){speaking=false;return;}
   speaking=true;
-  const u=new SpeechSynthesisUtterance(cleanForSpeech(it.text));
-  const v=voiceFor(it.id); if(v){u.voice=v;u.lang=v.lang;} else u.lang="ar-SA";
+  const english = SPEAK_EN && !!it.en;
+  const u=new SpeechSynthesisUtterance(cleanForSpeech(english?it.en:it.text));
+  const v=voiceFor(it.id, english); if(v){u.voice=v;u.lang=v.lang;} else u.lang=english?"en-US":"ar-SA";
   const idx=TEAM.findIndex(m=>m.id===it.id);
   u.rate=parseFloat($("#rate").value||1); u.pitch= idx<0?1: 0.85+ (idx%5)*0.08;
   if(it.el) it.el.classList.add("speaking");
@@ -490,10 +505,11 @@ async function send(q, viaVoice){
   addMsg("owner",q);
   roomSep("طلب جديد: "+(q.length>60?q.slice(0,60)+"…":q));
   try{
+    lastFinalEn="";
     const final = isLive()? await runLive(q) : await runDemo(q);
-    addMsg("agent",final,"gm");
+    addMsg("agent",final,"gm",lastFinalEn);
     state.history.push({q,a:final});
-    if($("#autoVoice").checked||lastWasVoice) speakQueue([{id:"gm",text:splitSvg(final).text}], $("#roomVoice").checked);
+    if($("#autoVoice").checked||lastWasVoice) speakQueue([{id:"gm",text:splitSvg(final).text,en:lastFinalEn}], $("#roomVoice").checked);
   }catch(err){
     console.error(err);
     addMsg("agent","عذراً، حدث خطأ في الاتصال: "+err.message+"\nتحقق من المفتاح في الإعدادات أو حاول مرة أخرى بعد قليل.","gm");
@@ -515,6 +531,16 @@ async function claude(system, user, max=700){
   return j.content.filter(c=>c.type==="text").map(c=>c.text).join("").trim();
 }
 const STYLE = "اكتب بلغة عربية فصحى واضحة وسهلة، بأسلوب مهني ودود كاجتماع عمل بين زملاء. جمل قصيرة ومباشرة، بلا مقدمات طويلة، وبلا تنسيق Markdown ثقيل.";
+const EN_NAME={"أبو فهد":"Abu Fahad","سلطان":"Sultan","نورة":"Noura","ريم":"Reem","خالد":"Khalid","ماجد":"Majed","عبدالله":"Abdullah","هيا":"Haya","سارة":"Sarah","فيصل":"Faisal","لمى":"Lama","تركي":"Turki","يوسف":"Yousef","عبدالله العودة":"Abdullah Al-Awdah","أبو خالد":"Abu Khalid","سلمان":"Salman","عبدالرحمن":"Abdulrahman","نايف":"Nayef","أبو عبدالله":"Abu Abdullah","فهد":"Fahad","بندر":"Bandar"};
+function enName(m){return EN_NAME[m.name]||m.name;}
+let lastFinalEn="";
+function enRule(){return SPEAK_EN?`\nبعد ردك العربي أضف سطراً أخيراً منفصلاً يبدأ بالعلامة <<EN>> ثم ترجمة إنجليزية طبيعية وسلسة لما قلته تماماً، لتُقرأ بصوت عالٍ (بلا SVG وبلا رموز). اكتب الأسماء في الإنجليزية هكذا: ${TEAM.map(m=>m.name+"="+enName(m)).join("، ")}.`:"";}
+function splitEn(raw){
+  const i=raw.indexOf("<<EN>>"); if(i<0) return {ar:raw.trim(),en:""};
+  let ar=raw.slice(0,i).trim(), en=raw.slice(i+6);
+  const sv=en.match(/<svg[\s\S]*<\/svg>/i); if(sv){ar+="\n"+sv[0]; en=en.replace(sv[0],"");}
+  return {ar, en:en.replace(/```[a-z]*|```/g,"").trim()};
+}
 function teamList(){return TEAM.map(m=>`- ${m.id}: ${m.name} (${m.role}) — ${m.brief}`).join("\n");}
 function historyText(){return state.history.slice(-4).map(h=>`المالك: ${h.q}\nالمدير العام: ${h.a}`).join("\n\n");}
 
@@ -525,13 +551,13 @@ async function runLive(q){
   const plan = await claude(
     `أنت المدير العام لفريق يدير أعمال مالك سعودي. ${ctx}\nأعضاء الفريق:\n${teamList()}\n` +
     `مهمتك الآن: اختر من 2 إلى 4 أعضاء (بدون gm وبدون arbiter) الأنسب للطلب، واكتب لهم توجيهاً قصيراً بالفصحى. ${STYLE}\n` +
-    `رد بصيغة JSON فقط بهذا الشكل: {"brief":"توجيهك للفريق","members":["id1","id2"],"needs_decision":true}`,
+    `رد بصيغة JSON فقط بهذا الشكل: {"brief":"توجيهك للفريق","brief_en":"English translation of the brief, natural spoken English","members":["id1","id2"],"needs_decision":true}`,
     `${historyText()?"المحادثة السابقة:\n"+historyText()+"\n\n":""}طلب المالك الجديد: ${q}`, 400);
   setBusy("gm",false);
   let p; try{p=JSON.parse(plan.match(/\{[\s\S]*\}/)[0]);}catch(e){p={brief:plan,members:["analyst","accountant"],needs_decision:true};}
   const members=(p.members||[]).filter(id=>T[id]&&id!=="gm"&&id!=="arbiter").slice(0,4);
   if(!members.length) members.push("analyst");
-  roomMsg("gm",p.brief||"زملائي، اطلعوا على طلب المالك وأفيدوني بآرائكم.");
+  roomMsg("gm",p.brief||"زملائي، اطلعوا على طلب المالك وأفيدوني بآرائكم.", p.brief_en||(p.brief?"":"Team, please review the owner's request and share your views."));
   const transcript=[`${T.gm.name} (المدير العام): ${p.brief}`];
 
   // 2) كل عضو يدلي برأيه ويشوف كلام اللي قبله
@@ -540,11 +566,12 @@ async function runLive(q){
     const extra = id==="designer" ? " إذا الطلب فيه شعار أو قائمة طعام أو بوستر، أرفق تصميم مبدئي بسيط وأنيق بصيغة SVG واحدة (viewBox حوالي 400x400، نصوص عربية، بدون سكربتات) بعد كلامك." : "";
     const said = await claude(
       `أنت ${m.name}، ${m.role} في فريق يدير أعمال مالك سعودي. ${m.brief}\n${ctx}\n${STYLE}\n` +
-      `أنت في اجتماع داخلي مع زملائك (ويستطيع المالك الاطلاع على النقاش). علّق على كلام زملائك عند الحاجة وخاطبهم بأسمائهم، وقدّم رأيك من واقع تخصصك بأرقام أو خطوات محددة في جملتين إلى أربع جمل.${extra}`,
-      `طلب المالك: ${q}\n\nالنقاش حتى الآن:\n${transcript.join("\n")}\n\nحان دورك للحديث.`, id==="designer"?2500:500);
+      `أنت في اجتماع داخلي مع زملائك (ويستطيع المالك الاطلاع على النقاش). علّق على كلام زملائك عند الحاجة وخاطبهم بأسمائهم، وقدّم رأيك من واقع تخصصك بأرقام أو خطوات محددة في جملتين إلى أربع جمل.${extra}${enRule()}`,
+      `طلب المالك: ${q}\n\nالنقاش حتى الآن:\n${transcript.join("\n")}\n\nحان دورك للحديث.`, id==="designer"?2600:700);
     setBusy(id,false);
-    const it=roomMsg(id,said); transcript.push(`${m.name} (${m.role}): ${it.text}`);
-    if(id==="designer"){ const s=splitSvg(said).svg; if(s) state.lastSvg=s; }
+    const sp=splitEn(said);
+    const it=roomMsg(id,sp.ar,sp.en); transcript.push(`${m.name} (${m.role}): ${it.text}`);
+    if(id==="designer"){ const s=splitSvg(sp.ar).svg; if(s) state.lastSvg=s; }
   }
 
   // 3) المحكّم يطلع الخيارات
@@ -552,18 +579,19 @@ async function runLive(q){
   if(p.needs_decision!==false){
     setBusy("arbiter",true); typing("سلطان يرتب الخيارات للمدير العام...");
     arb = await claude(
-      `أنت سلطان، المشرف والمحكّم في الفريق. ${T.arbiter.brief}\n${STYLE}`,
-      `طلب المالك: ${q}\n\nالنقاش:\n${transcript.join("\n")}\n\nاعرض على المدير العام خيارين أو ثلاثة مرقمة (سطر أو سطران لكل خيار مع ميزته وعيبه)، ثم توصيتك في سطر واحد.`, 500);
+      `أنت سلطان، المشرف والمحكّم في الفريق. ${T.arbiter.brief}\n${STYLE}${enRule()}`,
+      `طلب المالك: ${q}\n\nالنقاش:\n${transcript.join("\n")}\n\nاعرض على المدير العام خيارين أو ثلاثة مرقمة (سطر أو سطران لكل خيار مع ميزته وعيبه)، ثم توصيتك في سطر واحد.`, 800);
     setBusy("arbiter",false);
-    roomMsg("arbiter",arb); transcript.push(`سلطان (المحكّم): ${arb}`);
+    const sa=splitEn(arb); arb=sa.ar; roomMsg("arbiter",sa.ar,sa.en); transcript.push(`سلطان (المحكّم): ${arb}`);
   }
 
   // 4) المدير العام يرد على المالك
   setBusy("gm",true); typing(`${T.gm.name} يجهز الرد عليك...`);
   let final = await claude(
     `أنت ${T.gm.name}، المدير العام. ترد الآن على المالك مباشرة بعد اجتماع الفريق. ${ctx}\n${STYLE}\n` +
-    `قدّم له القرار أو التوصية، وأهم 3 إلى 5 خطوات تنفيذية مع اسم المسؤول عن كل خطوة، واذكر ما يحتاج إلى موافقته إن وجد. لا تتجاوز 120 كلمة.`,
-    `طلب المالك: ${q}\n\nمحضر الاجتماع:\n${transcript.join("\n")}`, 600);
+    `قدّم له القرار أو التوصية، وأهم 3 إلى 5 خطوات تنفيذية مع اسم المسؤول عن كل خطوة، واذكر ما يحتاج إلى موافقته إن وجد. لا تتجاوز 120 كلمة.${enRule()}`,
+    `طلب المالك: ${q}\n\nمحضر الاجتماع:\n${transcript.join("\n")}`, 1000);
+  { const sf=splitEn(final); final=sf.ar; lastFinalEn=sf.en; }
   setBusy("gm",false);
   if(state.lastSvg){ final += "\n"+state.lastSvg; state.lastSvg=null; }
   return final;
@@ -625,6 +653,40 @@ const SCENARIOS = [
   final:"الخلاصة: لدينا فرصة كبيرة في السلال المتروكة.\n\n1) تفعيل الشحن المجاني للطلبات فوق 199 ريالاً ابتداءً من الغد.\n2) يشغّل فيصل رسائل واتساب للسلال المتروكة.\n3) يطلب ماجد المنتج الأول اليوم قبل نفاده.\n4) يطلق خالد باقتين جديدتين هذا الأسبوع.\n\nنتوقع زيادة المبيعات بنحو 20٪ خلال شهر."},
 ];
 
+const SCEN_EN = [
+ {room:[
+   "Team, the opening of our new branch in north Riyadh is getting close. Faisal, Noura, Majed and Lama, I'd like your input. Our goal is a full branch from the very first month.",
+   "I suggest a second-pizza-at-half-price offer for the first two weeks, with five influencers from Al-Yasmin and Al-Malqa, and Snapchat ads targeting a five-kilometer radius around the branch.",
+   "I agree with the idea, Faisal, but the influencer budget must not exceed twenty-five thousand riyals. The offer will also cut our profit margin from sixty-two to thirty-one percent, which is acceptable for two weeks only.",
+   "If we go with the offer, I'll need to raise our dough and cheese order by forty percent for the first two weeks. Please confirm the decision before Thursday so I can notify the supplier.",
+   "I've finished a draft menu for the Pizza Al-Deera brand, with warm colors and a local touch. Once it's approved, I can turn it into a poster and a Snapchat story.",
+   "I'm presenting three options to the General Manager. One: second pizza at half price for two weeks with influencers. It spreads fast, but profit drops. Two: twenty percent off for a month without influencers. It costs less, but works more slowly. Three: free tasting on opening day, then fifteen percent off. It attracts the neighborhood, but needs more organizing. I recommend option one, with a cap of twenty-five thousand riyals for influencers."],
+  final:"We've decided to go with the second-pizza-at-half-price offer for the first two weeks, with five influencers from north Riyadh. Faisal launches Snapchat ads around the branch on Sunday. Noura has set the influencer budget at twenty-five thousand riyals. Majed raises the ingredient order by forty percent before Thursday. And Lama has finished the draft menu attached below, and will prepare the posters from it. We only need your approval on the influencer budget."},
+ {room:[
+   "Sarah, Haya and Reem, we're getting complaints that pizza is reaching customers cold. I want to know the cause and the proposed fix.",
+   "We received thirty-seven complaints this week. Eighty percent of them came from the Olaya branch, all for orders after nine p.m. Our app rating also dropped from four point six to four point one.",
+   "I checked the data, Sarah. Average delivery time at the Olaya branch during peak hours is forty-seven minutes, compared with twenty-eight at the other branches. The main reason is a shortage of drivers after nine.",
+   "On top of that, the thermal bags at the Olaya branch are old. I measured them, and they lose fifteen degrees in twenty minutes. They need to be replaced.",
+   "The General Manager has two options. One: add three drivers at peak time and replace the bags. This fixes the root cause, at about twelve thousand riyals a month. Two: shrink the Olaya delivery area. It's cheaper, but we lose orders. I recommend option one."],
+  final:"We found the cause: not enough drivers at the Olaya branch after nine p.m., and old thermal bags. We'll add three drivers at peak time, at about twelve thousand riyals a month. Haya replaces the thermal bags this week. Sarah contacts the customers who complained and gives them an apology voucher. And Reem tracks delivery time daily and reports back in two weeks. Do you approve adding the drivers?"},
+ {room:[
+   "We have twelve vacant apartments in Al-Narjis. Khalid, Faisal, Turki and Noura, what's the fastest solution in your view?",
+   "Demand in Al-Narjis right now is for three-bedroom family apartments, and our prices are eight percent above the area. If we lower the price a little or offer a free month, I can close five contracts within two weeks.",
+   "I'll shoot professional videos of the apartments and post them on Aqar, Haraj and Instagram, with a paid ad targeting employees in north Riyadh.",
+   "A reminder, Khalid: every contract must be registered on the Ejar platform. I also suggest quarterly payments instead of annual ones, since tenants find them more attractive.",
+   "Every month an apartment stays empty costs us about four thousand five hundred riyals. A free month is cheaper for us than cutting the price for the whole year.",
+   "The two options on the table. One: a free month with an annual contract and quarterly payments, keeping the price. Two: an eight percent price cut. It's faster, but it's a permanent loss. I recommend option one."],
+  final:"The approved plan: one free month for every annual contract, with quarterly payments and the current price kept. Faisal films the apartments and posts the ads within three days. Khalid contacts forty potential clients on our list. And Turki prepares the contracts on the Ejar platform. We expect to rent eight apartments within a month. Do you approve?"},
+ {room:[
+   "Reem, Khalid, Majed and Faisal, I want a clear picture of the store's sales and how we can grow them.",
+   "Our top three products bring in fifty-four percent of revenue. I also noticed that sixty-eight percent of carts are abandoned at checkout, mostly because of shipping fees.",
+   "A heads-up, Reem: our top product is almost out of stock. Only ninety units are left, and the supplier needs ten days to deliver.",
+   "I suggest free shipping on orders over one hundred ninety-nine riyals, and launching bundles that pair our best seller with slow-moving products.",
+   "And I'll send WhatsApp messages to anyone who abandons a cart within an hour. Usually about fifteen percent of them come back.",
+   "The two options. One: free shipping over one hundred ninety-nine riyals, plus abandoned-cart messages. Two: a general ten percent discount. I recommend the first, because it raises the average order value."],
+  final:"The bottom line: abandoned carts are a big opportunity for us. Free shipping on orders over one hundred ninety-nine riyals starts tomorrow. Faisal launches WhatsApp messages for abandoned carts. Majed orders the top product today before it runs out. And Khalid launches two new bundles this week. We expect sales to grow by about twenty percent within a month."},
+];
+SCENARIOS.forEach((s,i)=>{s.en=SCEN_EN[i];});
 function pickScenario(q){
   const pool = SCENARIOS.filter(s=>state.biz==="all"||s.biz===state.biz);
   return pool.find(s=>s.q===q) || pool.find(s=>s.keys.some(k=>q.includes(k))) || SCENARIOS.find(s=>s.q===q) || null;
@@ -637,15 +699,24 @@ function genericScenario(q){
     ["accountant","وسأحسب التكلفة المتوقعة وأتأكد من أنها ضمن ميزانية الشهر، علماً بأن أي مبلغ يتجاوز عشرة آلاف ريال يحتاج إلى موافقة المالك."],
     ["marketing","وإذا كان الأمر يمس العملاء، فسأجهز رسالة واضحة لهم عبر وسائل التواصل والواتساب."],
     ["arbiter","أمام المدير العام خياران: تجربة الحل على نطاق محدود لمدة أسبوعين ثم القياس، أو تطبيقه مباشرة على الجميع. أوصي بالتجربة أولاً."],
-  ], final:`وصلني طلبك، وناقشه الفريق.\n\nسنجرب الحل على نطاق محدود لمدة أسبوعين: تجمع ريم الأرقام، وتحسب نورة التكلفة، ويجهز فيصل التواصل مع العملاء. وسأرفع لك النتائج فور جاهزيتها.\n\n(هذا عرض تجريبي، وللحصول على ردود حقيقية أضف مفتاح Claude من الإعدادات.)`};
+  ], en:{room:[
+    "Team, we have a new request from the owner. Reem, Noura and Faisal, what do you think?",
+    "I'll gather the numbers related to this request from our sales data and customer reviews, and present the full picture within a day.",
+    "And I'll calculate the expected cost and make sure it fits this month's budget. Note that anything over ten thousand riyals needs the owner's approval.",
+    "And if this affects customers, I'll prepare a clear message for them on social media and WhatsApp.",
+    "The General Manager has two options: pilot the solution on a small scale for two weeks and then measure, or roll it out to everyone right away. I recommend piloting first."],
+    final:"I got your request, and the team has discussed it. We'll pilot the solution on a small scale for two weeks. Reem gathers the numbers, Noura calculates the cost, and Faisal prepares the customer communication. I'll send you the results as soon as they're ready. This is a demo; for real answers, add a Claude key in the settings."},
+  final:`وصلني طلبك، وناقشه الفريق.\n\nسنجرب الحل على نطاق محدود لمدة أسبوعين: تجمع ريم الأرقام، وتحسب نورة التكلفة، ويجهز فيصل التواصل مع العملاء. وسأرفع لك النتائج فور جاهزيتها.\n\n(هذا عرض تجريبي، وللحصول على ردود حقيقية أضف مفتاح Claude من الإعدادات.)`};
 }
 async function runDemo(q){
   const s = pickScenario(q) || genericScenario(q);
-  for(const [id,text] of s.room){
+  const en = s.en||{room:[],final:""};
+  for(const [i,[id,text]] of s.room.entries()){
     setBusy(id,true); typing(`${T[id].name} (${T[id].role}) يكتب...`);
     await sleep(700+Math.min(text.length*12,1600));
-    setBusy(id,false); roomMsg(id,text);
+    setBusy(id,false); roomMsg(id,text,en.room[i]||"");
   }
+  lastFinalEn = en.final||"";
   if(s.svg){ const d=state.room[state.room.length-1]; }
   setBusy("gm",true); typing(`${T.gm.name} يجهز الرد عليك...`); await sleep(900); setBusy("gm",false);
   return s.final;
@@ -667,7 +738,7 @@ document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>{
 function applyTheme(){const t=store.get("theme",""); if(t) document.documentElement.dataset.theme=t; else delete document.documentElement.dataset.theme;}
 $("#setBtn").onclick=()=>{$("#apiKey").value=apiKey();$("#model").value=store.get("model","claude-sonnet-5-5");$("#rate").value=store.get("rate","1");$("#theme").value=store.get("theme","");$("#dlg").showModal();};
 $("#closeSet").onclick=()=>$("#dlg").close();
-$("#saveSet").onclick=()=>{store.set("key",$("#apiKey").value.trim());store.set("model",$("#model").value);store.set("voice",$("#voice").value);store.set("rate",$("#rate").value);store.set("theme",$("#theme").value);applyTheme();updateBadge();$("#dlg").close();};
+$("#saveSet").onclick=()=>{store.set("key",$("#apiKey").value.trim());store.set("model",$("#model").value);store.set(SPEAK_EN?"voiceEn":"voice",$("#voice").value);store.set("rate",$("#rate").value);store.set("theme",$("#theme").value);applyTheme();updateBadge();$("#dlg").close();};
 $("#rate").value=store.get("rate","1");
 
 /* ================= اسم المدير العام ================= */
